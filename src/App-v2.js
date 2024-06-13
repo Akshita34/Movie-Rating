@@ -1,18 +1,57 @@
 import { useEffect, useRef, useState } from "react";
 import StarRating from "./StarRating";
 import { wait } from "@testing-library/user-event/dist/utils";
-import useMovies from "./useMovies";
-import useLocalStorage from "./useLocalStorage";
-import useKey from "./useKey";
 
 const key = "a7251cfc";
 
 export default function App() {
+  const [movies, setMovies] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [query, setQuery] = useState("interstellar");
   const [selectedID, setSelectedID] = useState("");
 
-  const { movies, isLoading, error } = useMovies(query);
-  const { watched, setWatched } = useLocalStorage([]);
+  // const [watched, setWatched] = useState([]);
+  const [watched, setWatched] = useState(function () {
+    const storedValue = localStorage.getItem("watched");
+    return JSON.parse(storedValue);
+  });
+
+  useEffect(
+    function () {
+      async function fetchMovies() {
+        try {
+          setIsLoading(true);
+          setError("");
+          const res = await fetch(
+            `http://www.omdbapi.com/?apikey=${key}&s=${query}`
+          );
+          // console.log(res);
+          if (!res.ok)
+            throw new Error("Oops...There is some error in fetching data");
+
+          const data = await res.json();
+          console.log(data);
+          if (data.Response === "False") throw new Error("Movie not found");
+          setMovies(data.Search);
+          setIsLoading(false);
+        } catch (err) {
+          if (err.name !== "AbortError")
+            setError(err.message || "Movie not found");
+          // console.log(err.message);
+          setIsLoading(false);
+        }
+      }
+      if (query.length < 3) {
+        setError("");
+        setMovies([]);
+        return;
+      }
+
+      fetchMovies();
+    },
+    [query]
+  );
 
   function handleSetSelectedID(id) {
     setSelectedID((selectedID) => (id === selectedID ? null : id));
@@ -30,6 +69,13 @@ export default function App() {
   function handleOnDelete(id) {
     setWatched(watched.filter((movie) => movie.imdbID !== id));
   }
+
+  useEffect(
+    function () {
+      localStorage.setItem("watched", JSON.stringify(watched));
+    },
+    [watched]
+  );
 
   return (
     <>
@@ -99,7 +145,22 @@ function Logo() {
 
 function Search({ query, setQuery }) {
   const inplutEl = useRef(null);
-  useKey("Enter", inplutEl, setQuery);
+
+  useEffect(
+    function () {
+      // console.log(inplutEl.current);
+      function callBack(e) {
+        if (document.activeElement === inplutEl.current) return;
+        if (e.code === "Enter") {
+          inplutEl.current.focus();
+          setQuery("");
+        }
+      }
+      document.addEventListener("keydown", callBack);
+    },
+    [setQuery]
+  );
+
   return (
     <input
       className="search"
@@ -328,7 +389,7 @@ function Summary({ watched }) {
         </p>
         <p>
           <span>⏳</span>
-          <span>{avgTime.toFixed(2)} min</span>
+          <span>{avgTime} min</span>
         </p>
       </div>
     </div>
